@@ -54,6 +54,7 @@ interface HttpRequestOptions {
   dispatcher?: any;
   params?: Record<string, string>;
   retryAttempts?: number;
+  validateStatus?: (status: number) => boolean;
 }
 
 interface HttpResponse {
@@ -77,7 +78,8 @@ export async function httpRequest(url: string, options: HttpRequestOptions = {})
     headers = {},
     timeout = 8000,
     dispatcher,
-    params
+    params,
+    validateStatus
   } = options;
 
   if (params) {
@@ -139,6 +141,11 @@ export async function httpRequest(url: string, options: HttpRequestOptions = {})
       headers: responseHeaders
     };
   } else if (statusCode === 304) {
+    await body.dump();
+    if (validateStatus?.(304)) {
+      noteTrackerCall(url, statusCode);
+      return { data: null, status: statusCode, headers: responseHeaders };
+    }
     const error: HttpError = new Error(`Not Modified`);
     error.response = {
       status: 304,

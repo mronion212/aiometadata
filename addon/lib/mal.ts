@@ -305,7 +305,7 @@ async function _makeJikanRequest(url: string): Promise<any> {
     headers['If-None-Match'] = etag;
   }
 
-  const response = await httpGet(url, {
+  let response = await httpGet(url, {
       dispatcher: malDispatcher,
       headers: headers,
       timeout: 15000,
@@ -321,7 +321,7 @@ async function _makeJikanRequest(url: string): Promise<any> {
            }
        }
        logger.warn(`[304] ETag match but body missing for ${url}. Re-fetching without ETag...`);
-       return httpGet(url, { dispatcher: malDispatcher, timeout: 15000, headers: {} });
+       response = await httpGet(url, { dispatcher: malDispatcher, timeout: 15000, headers: {} });
   }
 
   if (response.headers?.etag && redis) {

@@ -2904,7 +2904,7 @@ async function buildSeriesResponseFromTvmaze(stremioId, tvmazeShow, episodes, la
 async function buildAnimeResponse(stremioId, malData, language, characterData, episodeData, config, userUUID, enrichmentData = {}) {
   try {
     const { mapping, bestBackgroundUrl, bestLandscapePosterUrl } = enrichmentData;
-    const stremioType = malData.type.toLowerCase() === 'movie' ? 'movie' : 'series';
+    const stremioType = malData.type?.toLowerCase() === 'movie' ? 'movie' : 'series';
     const keywordsPending = moviedb.titleKeywordNames(mapping?.tmdbId, stremioType, config);
     const imdbId = mapping?.imdbId;
     const kitsuId = mapping?.kitsuId;
@@ -3257,7 +3257,7 @@ async function buildAnimeResponse(stremioId, malData, language, characterData, e
       director: [],
       writers: [],
       behaviorHints: {
-        defaultVideoId: (stremioType === 'movie' || (malData.type.toLowerCase() === 'tv special' && (episodeData === null || episodeData?.length == 0))) ? ((kitsuId && idProvider === 'kitsu') ? `kitsu:${kitsuId}` : (imdbId && idProvider === 'imdb') ? imdbId : stremioId) : null,
+        defaultVideoId: (stremioType === 'movie' || (malData.type?.toLowerCase() === 'tv special' && (episodeData === null || episodeData?.length == 0))) ? ((kitsuId && idProvider === 'kitsu') ? `kitsu:${kitsuId}` : (imdbId && idProvider === 'imdb') ? imdbId : stremioId) : null,
         hasScheduledVideos: stremioType === 'series',
       },
       videos: videos,

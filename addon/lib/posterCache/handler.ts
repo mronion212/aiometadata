@@ -147,6 +147,12 @@ export function recordRevalidated(imageClass: ImageClass, status: string, method
 }
 
 const CLAIMED = Symbol('poster-cache-claimed');
+const DELIVERING = Symbol('poster-cache-delivering');
+
+function clientGone(req: any, res: any, error: any): boolean {
+  return Boolean(req.destroyed || res.destroyed || error?.code === 'ERR_STREAM_PREMATURE_CLOSE');
+}
+
 function claimStream(stream: any): boolean {
   if (stream[CLAIMED]) return true;
   stream[CLAIMED] = true;
@@ -183,6 +189,7 @@ async function pipeStream(
   });
 
   res.status(200);
+  res[DELIVERING] = true;
   await pipeline(body, counter, res);
   record('BYPASS', bytes);
   if (shouldLogRequests()) log(3, `${req.method} ${imageClass} BYPASS ${bytes} ${url}`);
@@ -278,12 +285,17 @@ export function posterCacheHandler() {
         res.end(entry.body);
       } else {
         // Large entry: streamed off disk rather than buffered.
+        res[DELIVERING] = true;
         await pipeline(entry.openStream!(), res);
       }
     } catch (error: any) {
       const status = error instanceof UpstreamRejected ? error.status : 502;
       const message = error?.message || 'Poster cache error';
-      rememberFailure(cacheKey, status, message);
+      if (res[DELIVERING] && clientGone(req, res, error)) {
+        if (logRequests) log(3, `${req.method} ${imageClass} client left mid-response ${url}`);
+        return;
+      }
+      if (!res[DELIVERING]) rememberFailure(cacheKey, status, message);
       recordError();
       // Errors are always logged: they are rare and are what an operator needs.
       log(status >= 500 ? 0 : 1, `${req.method} ${imageClass} ERROR ${status} ${url} — ${message}`);
