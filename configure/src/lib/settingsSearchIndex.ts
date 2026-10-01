@@ -40,8 +40,8 @@ export const SETTINGS_SEARCH_INDEX: SettingsSearchEntry[] = [
   },
   {
     id: 'general.displayAgeRating', section: 'general', anchor: 'display-age-rating',
-    label: 'Show Age Rating in Genres',
-    description: 'Show the age rating in genres.',
+    label: 'Display Age Rating',
+    description: 'Show rating/certification in genres.',
     keywords: ['18+', 'certification', 'pg', 'mature'],
   },
   {

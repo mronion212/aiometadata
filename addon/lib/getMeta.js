@@ -1,4 +1,4 @@
-const { getContentRatingCountry, resolveContentRating, nativeContentRating, applyContentRatingDisplay } = require('../utils/contentRating');
+const { getContentRatingCountry } = require('../utils/contentRating');
 require("dotenv").config();
 const Utils = require("../utils/parseProps");
 const moviedb = require("./getTmdb");
@@ -480,7 +480,7 @@ async function getMeta(type, language, stremioId, config = {}, userUUID, include
         meta.id = `tun_${meta.id}`;
       }
     }
-    return { meta: applyContentRatingDisplay(meta, config) };
+    return { meta };
   } catch (error) {
     logger.error(`Failed to get meta for ${type} with ID ${stremioId}:`, error);
     return { meta: null };
@@ -935,7 +935,7 @@ async function getSeriesMeta(preferredProvider, stremioId, language, config, use
       const seriesData = await moviedb.tvInfo({ 
         id, 
         language, 
-        append_to_response: "videos,credits,external_ids,images,translations,watch/providers,content_ratings,keywords",
+        append_to_response: "videos,credits,external_ids,images,translations,watch/providers,keywords", 
         include_image_language: imageLanguages,
         include_video_language: videoLanguages
       }, config);
@@ -1009,12 +1009,12 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
         const imageLanguages = Array.from(new Set([langCode, 'en', 'null'])).join(',');
         const videoLanguages = Array.from(new Set([langCode, 'en', 'null'])).join(',');
         if (type === 'movie') {
-          const movieData = await moviedb.movieInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,release_dates,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
+          const movieData = await moviedb.movieInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
           if (movieData) {
           return await buildTmdbMovieResponse(stremioId, movieData, language, config, userUUID, { allIds }, isAnime);
           }
         } else {
-          const seriesData = await moviedb.tvInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,content_ratings,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
+          const seriesData = await moviedb.tvInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
           if (seriesData) {
           return await buildTmdbSeriesResponse(stremioId, seriesData, language, config, userUUID, { allIds }, isAnime, includeVideos);
           }
@@ -1160,12 +1160,12 @@ async function getAnimeMeta(preferredProvider, stremioId, language, config, user
       const imageLanguages = Array.from(new Set([langCode, 'en', 'null'])).join(',');
       const videoLanguages = Array.from(new Set([langCode, 'en', 'null'])).join(',');
       if (type === 'movie') {
-        const movieData = await moviedb.movieInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,release_dates,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
+        const movieData = await moviedb.movieInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
         if (movieData) {
           return _markDegraded(await buildTmdbMovieResponse(stremioId, movieData, language, config, userUUID, { allIds }, isAnime), degraded);
         }
       } else {
-        const seriesData = await moviedb.tvInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,content_ratings,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
+        const seriesData = await moviedb.tvInfo({ id: allIds.tmdbId, language, append_to_response: "videos,credits,external_ids,images,translations,watch/providers,keywords", include_image_language: imageLanguages, include_video_language: videoLanguages }, config);
         if (seriesData) {
           return _markDegraded(await buildTmdbSeriesResponse(stremioId, seriesData, language, config, userUUID, { allIds }, isAnime, includeVideos), degraded);
         }
@@ -1264,11 +1264,10 @@ async function buildImdbSeriesResponse(stremioId, imdbData, enrichmentData = {},
     if(seriesData){
       imdbData.keywords = moviedb.keywordNamesOf(seriesData);
       const certification = Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings);
-      const userCountry = getContentRatingCountry(config);
-      const { certificationLocal, contentRating } = resolveContentRating(config, 'series', { tmdb: { us: certification, local: Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) } });
+      const userCountry = getContentRatingCountry(config, config.language?.split('-')[1]);
+      const certificationLocal = userCountry && userCountry !== 'US' ? (Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) || certification) : certification;
       imdbData.app_extras.certification = certification;
       imdbData.app_extras.certificationLocal = certificationLocal;
-      imdbData.app_extras.contentRating = contentRating;
       if (seriesData.videos) {
         const allTrailers = Utils.parseTrailers(seriesData.videos);
         const filteredTrailers = allTrailers.filter(trailer => trailer.lang === langCode);
@@ -1279,7 +1278,7 @@ async function buildImdbSeriesResponse(stremioId, imdbData, enrichmentData = {},
 
         imdbData.trailers = finalTrailers;
       }
-      if (certificationLocal && config.displayAgeRating) {
+      if (certification && config.displayAgeRating) {
         const certificationLink = {
           name: certificationLocal,
           category: 'Genres',
@@ -1358,12 +1357,11 @@ async function buildImdbMovieResponse(stremioId, imdbData, enrichmentData = {}, 
     imdbData.released = movieData.release_date ? resolveReleaseTimestamp(movieData.release_date, { originCountry: movieData.production_countries?.[0]?.iso_3166_1 }) : null;
     imdbData.app_extras.releaseDates = movieData.release_dates;
     const certification = Utils.getTmdbMovieCertificationForCountry(movieData.release_dates);
-    const userCountry = getContentRatingCountry(config);
-    const { certificationLocal, contentRating } = resolveContentRating(config, 'movie', { tmdb: { us: certification, local: Utils.getTmdbMovieCertificationForCountry(movieData.release_dates, userCountry) } });
+    const userCountry = getContentRatingCountry(config, config.language?.split('-')[1]);
+    const certificationLocal = userCountry && userCountry !== 'US' ? (Utils.getTmdbMovieCertificationForCountry(movieData.release_dates, userCountry) || certification) : certification;
     imdbData.app_extras.certification = certification;
     imdbData.app_extras.certificationLocal = certificationLocal;
-    imdbData.app_extras.contentRating = contentRating;
-    if (certificationLocal && config.displayAgeRating) {
+    if (certification && config.displayAgeRating) {
       const certificationLink = {
         name: certificationLocal,
         category: 'Genres',
@@ -1501,10 +1499,10 @@ async function buildTmdbMovieResponse(stremioId, movieData, language, config, us
     movieData.original_title
   );
   const certification = Utils.getTmdbMovieCertificationForCountry(movieData.release_dates);
-  const userCountry = getContentRatingCountry(config);
-  const { certificationLocal, contentRating } = resolveContentRating(config, 'movie', { tmdb: { us: certification, local: Utils.getTmdbMovieCertificationForCountry(movieData.release_dates, userCountry) } });
+  const userCountry = getContentRatingCountry(config, language?.split('-')[1]);
+  const certificationLocal = userCountry && userCountry !== 'US' ? (Utils.getTmdbMovieCertificationForCountry(movieData.release_dates, userCountry) || certification) : certification;
   let links = Utils.buildLinks(imdbRating, imdbId, title, 'movie', movieData.genres, credits, language, castCount, userUUID);
-  if (certificationLocal && config.displayAgeRating) {
+  if (certification && config.displayAgeRating) {
     const certificationLink = {
       name: certificationLocal,
       category: 'Genres',
@@ -1549,7 +1547,7 @@ async function buildTmdbMovieResponse(stremioId, movieData, language, config, us
     trailers: finalTrailers,
     links: links,
     behaviorHints: { defaultVideoId: kitsuId && idProvider === 'kitsu' ? `kitsu:${kitsuId}` : imdbId || stremioId, hasScheduledVideos: false },
-    app_extras: { cast: Utils.parseCast(credits), directors: directorDetails, writers: writerDetails, releaseDates: movieData.release_dates, certification: certification, certificationLocal: certificationLocal, contentRating },
+    app_extras: { cast: Utils.parseCast(credits), directors: directorDetails, writers: writerDetails, releaseDates: movieData.release_dates, certification: certification, certificationLocal: certificationLocal },
     ...stampIds(allIds),
   };
 }
@@ -1940,10 +1938,10 @@ async function buildTmdbSeriesResponse(stremioId, seriesData, language, config, 
   );
 
   const certification = Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings);
-  const userCountry = getContentRatingCountry(config);
-  const { certificationLocal, contentRating } = resolveContentRating(config, 'series', { tmdb: { us: certification, local: Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) } });
+  const userCountry = getContentRatingCountry(config, language?.split('-')[1]);
+  const certificationLocal = userCountry && userCountry !== 'US' ? (Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) || certification) : certification;
   let links = [ ...Utils.buildLinks(imdbRating, imdbId, name, 'series', seriesData.genres, credits, language, castCount, userUUID)];
-  if (certificationLocal && config.displayAgeRating) {
+  if (certification && config.displayAgeRating) {
     const certificationLink = {
       name: certificationLocal,
       category: 'Genres',
@@ -1991,7 +1989,7 @@ async function buildTmdbSeriesResponse(stremioId, seriesData, language, config, 
       defaultVideoId: null,
       hasScheduledVideos: true,
     },
-    app_extras: { cast: Utils.parseCast(credits), directors: directorDetails, writers: writerDetails, seasonPosters: tmdbSeasonPosters, certification: certification, certificationLocal: certificationLocal, contentRating },
+    app_extras: { cast: Utils.parseCast(credits), directors: directorDetails, writers: writerDetails, seasonPosters: tmdbSeasonPosters, certification: certification, certificationLocal: certificationLocal },
     ...stampIds(allIds),
   };
   if (runtime) {
@@ -2109,8 +2107,7 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
   let release_dates = null;
   let certification;
   let certificationLocal;
-  let contentRating;
-  const userCountry = getContentRatingCountry(config);
+  const userCountry = getContentRatingCountry(config, language?.split('-')[1]);
   const wantsLocal = !!userCountry && userCountry !== 'US';
   let tmdbBase = null;
   let tmdbLocal = null;
@@ -2129,14 +2126,19 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
   }
   // A provider holding the US rating does not mean it holds the viewer's, so the
   // other one is still asked for the country before falling back.
-  const tvdbBase = !tmdbBase ? Utils.getTvdbCertification(movieData.contentRatings, 'usa', 'movie') : null;
-  const tvdbLocal = wantsLocal ? Utils.getTvdbCertification(movieData.contentRatings, userCountry, 'movie', false) : null;
-  ({ certification, certificationLocal, contentRating } = resolveContentRating(config, 'movie', { tmdb: { us: tmdbBase, local: tmdbLocal }, tvdb: { us: tvdbBase, local: tvdbLocal } }));
+  let tvdbBase = null;
+  let tvdbLocal = null;
+  if (!tmdbBase || (wantsLocal && !tmdbLocal)) {
+    if (!tmdbBase) tvdbBase = Utils.getTvdbCertification(movieData.contentRatings, 'usa', 'movie');
+    if (wantsLocal) tvdbLocal = Utils.getTvdbCertification(movieData.contentRatings, userCountry, 'movie', false);
+  }
+  certification = tmdbBase || tvdbBase;
+  certificationLocal = wantsLocal ? (tmdbLocal || tvdbLocal || certification) : certification;
   let links = Utils.buildLinks(imdbRating, imdbId, translatedName, 'movie', movieData.genres, movieCredits, language, castCount, userUUID, true, 'tvdb');
   if (!Array.isArray(links)) links = [];
   else links = [...links];
   links.push(...directorLinks, ...writerLinks);
-  if(certificationLocal && config.displayAgeRating){
+  if(certification && config.displayAgeRating){
     const certificationLink = {
       name: certificationLocal,
       category: 'Genres',
@@ -2178,7 +2180,7 @@ async function buildTvdbMovieResponse(stremioId, movieData, language, config, us
       hasScheduledVideos: false
     },
     links: links,
-    app_extras: { cast: Utils.parseCast(movieCredits, undefined, 'tvdb'), directors: directorDetails, writers: writerDetails, releaseDates: release_dates, certification: certification, certificationLocal: certificationLocal, contentRating },
+    app_extras: { cast: Utils.parseCast(movieCredits, undefined, 'tvdb'), directors: directorDetails, writers: writerDetails, releaseDates: release_dates, certification: certification, certificationLocal: certificationLocal },
     ...stampIds(allIds),
   };
 }
@@ -2562,8 +2564,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
 
   let certification;
   let certificationLocal;
-  let contentRating;
-  const userCountry = getContentRatingCountry(config);
+  const userCountry = getContentRatingCountry(config, language?.split('-')[1]);
   const wantsLocal = !!userCountry && userCountry !== 'US';
   let tmdbBase = null;
   let tmdbLocal = null;
@@ -2581,14 +2582,19 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
   }
   // A provider holding the US rating does not mean it holds the viewer's, so the
   // other one is still asked for the country before falling back.
-  const tvdbBase = !tmdbBase ? Utils.getTvdbCertification(tvdbShow.contentRatings, 'usa', 'tv') : null;
-  const tvdbLocal = wantsLocal ? Utils.getTvdbCertification(tvdbShow.contentRatings, userCountry, 'tv', false) : null;
-  ({ certification, certificationLocal, contentRating } = resolveContentRating(config, 'series', { tmdb: { us: tmdbBase, local: tmdbLocal }, tvdb: { us: tvdbBase, local: tvdbLocal } }));
+  let tvdbBase = null;
+  let tvdbLocal = null;
+  if (!tmdbBase || (wantsLocal && !tmdbLocal)) {
+    if (!tmdbBase) tvdbBase = Utils.getTvdbCertification(tvdbShow.contentRatings, 'usa', 'tv');
+    if (wantsLocal) tvdbLocal = Utils.getTvdbCertification(tvdbShow.contentRatings, userCountry, 'tv', false);
+  }
+  certification = tmdbBase || tvdbBase;
+  certificationLocal = wantsLocal ? (tmdbLocal || tvdbLocal || certification) : certification;
   let links = Utils.buildLinks(imdbRating, imdbId, translatedName, 'series', tvdbShow.genres, tvdbCredits, language, castCount, userUUID, true, 'tvdb');
   if (!Array.isArray(links)) links = [];
   else links = [...links];
   links.push(...directorLinks, ...writerLinks);
-  if(certificationLocal && config.displayAgeRating){
+  if(certification && config.displayAgeRating){
     const certificationLink = {
       name: certificationLocal,
       category: 'Genres',
@@ -2631,7 +2637,7 @@ async function buildTvdbSeriesResponse(stremioId, tvdbShow, tvdbEpisodes, langua
 
     links: links,
     behaviorHints: { defaultVideoId: null, hasScheduledVideos: true },
-    app_extras: { cast: Utils.parseCast(tvdbCredits, undefined, 'tvdb'), directors: directorDetails, writers: writerDetails, seasonPosters: seasonPosters, certification: certification, certificationLocal: certificationLocal, contentRating },
+    app_extras: { cast: Utils.parseCast(tvdbCredits, undefined, 'tvdb'), directors: directorDetails, writers: writerDetails, seasonPosters: seasonPosters, certification: certification, certificationLocal: certificationLocal },
     ...stampIds(allIds),
   };
   //console.log(Utils.parseCast(tmdbLikeCredits, castCount));
@@ -2840,15 +2846,14 @@ async function buildSeriesResponseFromTvmaze(stremioId, tvmazeShow, episodes, la
 
   let certification = null;
   let certificationLocal = null;
-  let contentRating = null;
   let tmdbKeywords;
   if(tmdbId){
     const seriesData = await moviedb.tvInfo({ id: tmdbId, language, append_to_response: "content_ratings,keywords" }, config);
     tmdbKeywords = moviedb.keywordNamesOf(seriesData);
     if (seriesData) {
     certification = Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings);
-    const userCountry = getContentRatingCountry(config);
-    ({ certificationLocal, contentRating } = resolveContentRating(config, 'series', { tmdb: { us: certification, local: Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) } }));
+    const userCountry = getContentRatingCountry(config, language?.split('-')[1]);
+    certificationLocal = userCountry && userCountry !== 'US' ? (Utils.getTmdbTvCertificationForCountry(seriesData.content_ratings, userCountry) || certification) : certification;
     }
   }
   videos = [... specialVideos, ... videos];
@@ -2858,7 +2863,7 @@ async function buildSeriesResponseFromTvmaze(stremioId, tvmazeShow, episodes, la
 
   let links = [...Utils.buildLinks(imdbRating, imdbId, name, 'series', tvmazeShow.genres.map(g => ({ name: g })), tvmazeCredits, language, castCount, userUUID, false, 'tvmaze')];
   links.push(...producerLinks, ...writerLinks);
-  if(certificationLocal && config.displayAgeRating){
+  if(certification && config.displayAgeRating){
     const certificationLink = {
       name: certificationLocal,
       category: 'Genres',
@@ -2894,7 +2899,7 @@ async function buildSeriesResponseFromTvmaze(stremioId, tvmazeShow, episodes, la
     videos,
     links: links,
     behaviorHints: { defaultVideoId: null, hasScheduledVideos: true },
-    app_extras: { cast: Utils.parseCast(tvmazeCredits, undefined, 'tvmaze'), producers: producerDetails, writers: writerDetails, certification: certification, certificationLocal: certificationLocal, contentRating }
+    app_extras: { cast: Utils.parseCast(tvmazeCredits, undefined, 'tvmaze'), producers: producerDetails, writers: writerDetails, certification: certification, certificationLocal: certificationLocal }
   };
 
   return meta;
@@ -3266,7 +3271,7 @@ async function buildAnimeResponse(stremioId, malData, language, characterData, e
         director: [],
         writers: [],
         watchProviders: watchProviders,
-        certification: malCertification, certificationLocal: malData.rating, contentRating: nativeContentRating(config, malData.rating, 'mal')
+        ...(malCertification ? { certification: malCertification, certificationLocal: malData.rating } : {})
       }
     };
 
@@ -3339,15 +3344,11 @@ async function buildKitsuAnimeResponse(stremioId, kitsuData, genres, includeObje
     links.push(...relatedLinks.filter(Boolean));
     // Kitsu leaves ageRating empty on most recent seasonal anime; MAL rates them.
     let kitsuCertification = kitsuData.attributes.ageRating || null;
-    let ratingSource = 'kitsu';
-    let ratingOriginal = kitsuCertification;
     const certMalId = malId || (String(stremioId).startsWith('mal:') ? String(stremioId).slice(4) : null);
     if (!kitsuCertification && certMalId) {
       try {
         const malDetails = await cacheWrapJikanApi(`anime-details-${certMalId}`, () => jikan.getAnimeDetails(certMalId), null);
         kitsuCertification = Utils.malRatingToCertification(malDetails?.rating) || null;
-        ratingOriginal = malDetails?.rating;
-        ratingSource = 'mal';
       } catch (error) {
         logger.debug(`Could not read a MAL rating for kitsu:${kitsuData.id}: ${error.message}`);
       }
@@ -3413,8 +3414,7 @@ async function buildKitsuAnimeResponse(stremioId, kitsuData, genres, includeObje
         director: [],
         writers: [],
         watchProviders: [],
-        certification: kitsuCertification,
-        contentRating: nativeContentRating(config, ratingOriginal, ratingSource)
+        certification: kitsuCertification
       }
     }
 

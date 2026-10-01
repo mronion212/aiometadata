@@ -1,7 +1,6 @@
 import { LRUCache } from 'lru-cache';
 import { envInt } from '../../utils/envNumber';
 import redis from '../redisClient';
-import type { ContentRating } from '../../utils/contentRating';
 
 /**
  * What the episode builders read from a series meta, and nothing else, so a
@@ -25,7 +24,7 @@ export interface SeriesIndex {
   background?: string | null;
   logo?: string | null;
   landscapePoster?: string | null;
-  app_extras?: { certification?: string | null; certificationLocal?: string | null; contentRating?: ContentRating | null };
+  app_extras?: { certification?: string | null };
   videos: Array<{
     id: string;
     season: number | null;
@@ -90,11 +89,7 @@ function trim(meta: any): SeriesIndex {
     ...(meta.background ? { background: String(meta.background) } : {}),
     ...(meta.logo ? { logo: String(meta.logo) } : {}),
     ...(meta.landscapePoster ? { landscapePoster: String(meta.landscapePoster) } : {}),
-    ...(meta.app_extras ? { app_extras: {
-      certification: meta.app_extras.certification,
-      certificationLocal: meta.app_extras.certificationLocal,
-      ...(Object.prototype.hasOwnProperty.call(meta.app_extras, 'contentRating') ? { contentRating: meta.app_extras.contentRating } : {}),
-    } } : {}),
+    ...(meta.app_extras?.certification ? { app_extras: { certification: meta.app_extras.certification } } : {}),
     videos: videos.map((video: any) => ({
       id: String(video?.id ?? ''),
       season: Number.isInteger(video?.season) ? video.season : null,

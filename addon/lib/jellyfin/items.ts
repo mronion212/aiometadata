@@ -9,9 +9,6 @@ import { placeholderSources } from './streams';
 import redis from '../redisClient';
 import type { CatalogRef } from './views';
 import { viewerAccountOwner } from './viewer';
-import { FILTER_CERTIFICATION } from './profiles';
-import { formatContentRating } from '../../utils/contentRating';
-import { isUnratedCertification } from '../../utils/ageRating';
 
 const logger = consola.withTag('Jellyfin');
 
@@ -585,18 +582,6 @@ export function jellyfinTypeFor(metaType: string): 'Movie' | 'Series' {
   return metaType === 'movie' || metaType === 'anime.movie' ? 'Movie' : 'Series';
 }
 
-function ratingFields(meta: any): any {
-  const extras = meta.app_extras || {};
-  const display = Object.prototype.hasOwnProperty.call(extras, 'contentRating')
-    ? formatContentRating(extras.contentRating)
-    : extras.certificationLocal || extras.certification;
-
-  return {
-    OfficialRating: isUnratedCertification(display) ? null : display,
-    [FILTER_CERTIFICATION]: extras.certification || null,
-  };
-}
-
 export function isBoxSetMeta(meta: any): boolean {
   return String(meta?.id ?? '').startsWith('tvdbc:');
 }
@@ -649,7 +634,7 @@ export function metaToBaseItem(
       Id: encodeJellyfinId({ k: 'genre', t: mediaType, c: 'all', g }),
     })),
     CommunityRating: parseRating(meta.imdbRating),
-    ...ratingFields(meta),
+    OfficialRating: meta.app_extras?.certification || null,
     RunTimeTicks: itemType === 'BoxSet' ? null : parseRuntimeTicks(meta.runtime),
     ProviderIds: ids,
     ExternalUrls: externalUrls(ids, itemType === 'Series'),
@@ -887,7 +872,6 @@ export function buildSeasons(
       SeriesId: seriesId,
       SeriesName: meta.name,
       IndexNumber: season,
-      ...ratingFields(meta),
       DateCreated: EPOCH_DATE,
       ChildCount: episodes.length,
       RecursiveItemCount: episodes.length,
@@ -1013,7 +997,7 @@ export function buildEpisode(
       SeasonId: hasSeason ? parentSeasonId : null,
       SeriesId: seriesId,
       SeriesName: meta.name,
-      ...ratingFields(meta),
+      OfficialRating: meta.app_extras?.certification || null,
       ParentIndexNumber: hasSeason ? video.season : null,
       IndexNumber: Number(video.episode),
       Overview: video.overview || null,

@@ -1,4 +1,4 @@
-import { applyContentRatingDisplay, contentRatingCacheKey } from '../utils/contentRating';
+import { contentRatingCacheFields } from '../utils/contentRating';
 import { LRUCache } from 'lru-cache';
 import { withEpisodeOrder } from '../utils/episodeOrder';
 import type { MetaHashEntry } from './metaHashStore';
@@ -900,7 +900,7 @@ function getMetaCacheContext(config: any, metaId: string, type: string | null, u
 
   const base = {
     language: config.language || 'en-US',
-    contentRating: contentRatingCacheKey(config),
+    ...contentRatingCacheFields(config),
     contentType: contentType || 'unknown',
   };
 
@@ -1156,7 +1156,21 @@ function stripCertificationLinks(links: any[], certification: string): any[] {
 }
 
 function applyDisplayAgeRatingProjection(meta: any, config: any): any {
-  return applyContentRatingDisplay(meta, config);
+  const certification = meta?.app_extras?.certification;
+  if (!certification) return meta;
+  const displayCert = meta?.app_extras?.certificationLocal || certification;
+  const links = Array.isArray(meta.links) ? stripCertificationLinks(meta.links, certification).filter((l: any) => !(l?.name === displayCert && l?.category === 'Genres')) : [];
+  if (config.displayAgeRating) {
+    const imdbId = meta.id?.match(/^tt\d+/)?.[0] || meta.imdb_id || meta._imdbId;
+    const tmdbPath = meta.type === 'series' ? 'tv' : 'movie';
+    const url = imdbId
+      ? `https://www.imdb.com/title/${imdbId}/parentalguide/`
+      : `https://www.themoviedb.org/${tmdbPath}/${meta.id}`;
+    meta.links = [{ name: displayCert, category: 'Genres', url }, ...links];
+  } else if (Array.isArray(meta.links)) {
+    meta.links = links;
+  }
+  return meta;
 }
 
 function getConfiguredCastCount(config: any): number | null {
@@ -1259,7 +1273,6 @@ const CATALOG_META_FIELDS = [
   'writer',
   'writers',
   'certification',
-  'ageRating',
   'imdbRating',
   'country',
   'status',
@@ -1291,7 +1304,6 @@ function projectAppExtrasForCatalogCache(appExtras: any): any {
     // dropping it made a cached row fall back to the US rating while the meta page
     // kept showing the user's own. Same title, two answers, on a cache hit only.
     'certificationLocal',
-    'contentRating',
     'ratings',
     'releaseAvailability',
     'cast',
@@ -1420,7 +1432,7 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
 
   const catalogConfig: any = {
     ...(shouldExcludeLanguageForMAL ? {} : { language: config.language || 'en-US' }),
-    contentRating: contentRatingCacheKey(config),
+    ...contentRatingCacheFields(config),
     ...scopedProviders,
     sfw: config.sfw || false,
     includeAdult: config.includeAdult || false,
@@ -1648,7 +1660,10 @@ async function cacheWrapCatalog(userUUID: string, catalogKey: string, method: ()
   normalizeReleaseAvailabilityInPayload(result);
   normalizeCreditsInPayload(result);
 
-  for (const meta of result?.metas || []) applyContentRatingDisplay(meta, config);
+  if (result?.metas?.length) {
+    for (const meta of result.metas) applyDisplayAgeRatingProjection(meta, config);
+  }
+
   await applyImdbRatingProjectionToList(result?.metas);
 
   return result;
@@ -1683,7 +1698,7 @@ async function cacheWrapSearch(userUUID: string, searchKey: string, method: () =
 
   const searchConfig = {
     language: config.language || 'en-US',
-    contentRating: contentRatingCacheKey(config),
+    ...contentRatingCacheFields(config),
     searchProviders: config.search?.providers || {},
     searchNames: config.search?.searchNames || {},
     providerNames: config.search?.providerNames || {},
@@ -1719,7 +1734,6 @@ async function cacheWrapSearch(userUUID: string, searchKey: string, method: () =
     return normalizeReleaseAvailabilityInPayload(await method());
   }, SEARCH_TTL, options);
   normalizeReleaseAvailabilityInPayload(result);
-  for (const meta of result?.metas || []) applyContentRatingDisplay(meta, config);
   await applyImdbRatingProjectionToList(result?.metas);
   return result;
 }
@@ -1743,7 +1757,7 @@ async function cacheWrapMeta(userUUID: string, metaId: string, method: () => Pro
 
    const metaConfig: any = {
      language: config.language || 'en-US',
-     contentRating: contentRatingCacheKey(config),
+     ...contentRatingCacheFields(config),
 
      blurThumbs: config.blurThumbs || false,
      showMetaProviderAttribution: config.showMetaProviderAttribution || false,
@@ -2487,7 +2501,7 @@ async function cacheWrapStaticCatalog(userUUID: string, catalogKey: string, meth
 
   const staticCatalogConfig = {
     language: config.language || 'en-US',
-    contentRating: contentRatingCacheKey(config),
+    ...contentRatingCacheFields(config),
 
     providers: config.providers || {},
     artProviders: config.artProviders || {},

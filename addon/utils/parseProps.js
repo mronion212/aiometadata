@@ -1,4 +1,3 @@
-const { nativeContentRating } = require('./contentRating');
 const { decompressFromEncodedURIComponent } = require('lz-string');
 const axios = require('axios');
 const fanart = require('./fanart');
@@ -2050,9 +2049,9 @@ function getKitsuGenresForItem(item, included = [], allowIncludedFallback = fals
 }
 
 /** Where the catalog layer reads it from. Merged: releaseDates shares the object. */
-function withCatalogCertification(meta, config, originalRating, source) {
+function withCatalogCertification(meta) {
   if (!meta || isUnratedCertification(meta.certification)) return meta;
-  meta.app_extras = { ...(meta.app_extras || {}), certification: meta.certification, contentRating: nativeContentRating(config, originalRating, source) };
+  meta.app_extras = { ...(meta.app_extras || {}), certification: meta.certification };
   return meta;
 }
 
@@ -2197,7 +2196,7 @@ async function parseAnimeCatalogMeta(anime, config, language, descriptionFallbac
       defaultVideoId: stremioType === 'movie' ? mapping?.imdb_id ? mapping?.imdb_id: (kitsuId ? `kitsu:${kitsuId}` : `mal:${malId}`): null,
       hasScheduledVideos: stremioType === 'series',
     },
-  }, config, anime.rating, 'mal');
+  });
 }
 
 /**
@@ -2399,7 +2398,7 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
           meta.app_extras = { releaseDates };
         }
 
-        return withCatalogCertification(meta, config, item.attributes.ageRating, 'kitsu');
+        return withCatalogCertification(meta);
       }));
       // Filter out null metas before further processing
       metas = metas.filter(Boolean);
@@ -2533,7 +2532,7 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
         released: anime.aired?.from ? new Date(anime.aired.from) : undefined,
         status: anime.status,
         trailers: trailers
-      }, config, anime.rating, 'mal');
+      });
     }
 
     if((config.mal?.useImdbIdForCatalogAndSearch && imdbId)){
@@ -2591,7 +2590,7 @@ async function parseAnimeCatalogMetaBatch(animes, config, language, includeVideo
         meta.app_extras = { releaseDates };
       }
 
-      return withCatalogCertification(meta, config, anime.rating, 'mal');
+      return withCatalogCertification(meta);
     }
   }));
   
